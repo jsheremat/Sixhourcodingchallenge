@@ -1,0 +1,232 @@
+---
+title: "Six Hour Code Challenge"
+author: "Jeff Sheremata"
+date: "3/13/2021"
+output:
+  html_document: default
+  pdf_document: default
+   rmarkdown::github_document
+   
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning=FALSE, message=FALSE)
+```
+
+## Problem #1
+
+DPLYR aggregation.
+
+```{r my_data2, include=TRUE}
+library("readxl")
+library("dplyr")
+my_data <- read_excel("dow_jones_index.xlsx")
+my_data2<-my_data %>%
+  group_by(stock) %>% 
+  mutate(Weekly_pct_change = (open-lag(open))/lag(open) * 100)  %>% 
+  summarise(meanWeekly_pct_change = mean(Weekly_pct_change,na.rm=TRUE), .groups = 'drop') %>% 
+  arrange(desc(meanWeekly_pct_change))
+  
+  
+my_data2 %>% print(n = Inf) 
+```
+
+
+## Problems #2 and #4 Combined
+
+A random forest is used to generate feature importance.  I'm transforming all data into factors.  This is a quick and efficient approach and suitable given the small size of the data.  The output at the end highlights the differences between the excel and database files.  
+
+##Step1 - read in the packages
+```{r garfield, include=TRUE}
+
+
+  library(readxl)
+  library(dplyr)
+  library(magrittr)
+  library(vip)
+  library(recipes)
+  library(workflows)
+  library(caret)
+  library(DBI)
+  library(RSQLite)
+  garfield<-read_excel("garfield_activity.xlsx")
+  garfield
+  garfield2<-garfield %<>%
+    mutate_if(is.character,as.factor)%<>%
+    mutate_if(is.numeric,as.factor)
+  
+  garfield4<-garfield2[!(is.na(garfield2$WatchTV)),]
+
+  #garfieldglm<-glm(WatchTV ~ ., data=garfield4, family=binomial)
+  
+  #train the random forest
+    rf_fit <- train(WatchTV ~ ., 
+                  data = garfield4, 
+                  method = "ranger",
+                  #tuneGrid = tgrid,
+                  importance = "permutation")
+    
+    rf_fit
+    
+    #generate variable importances
+    #the top two indicators are sandwich at noon and a short commute  
+    varImp(rf_fit, scale = TRUE)
+    
+    
+    
+    
+
+  #problem 4
+    
+    #read in the data base
+  con<-dbConnect(SQLite(), 'test.db')
+  
+  dbListTables(con)
+  
+  #read in the garfield table
+  garfielddb_table<-dbReadTable(con, "garfield")
+  
+  ##compare to garfield excel sheet
+  
+  dim(garfielddb_table)
+  dim(garfield)
+  colnames(garfielddb_table)
+  colnames(garfielddb_table)
+  #highlight columns that are the same
+  
+  colnames(garfielddb_table)[colnames(garfielddb_table) %in% colnames(garfield)]
+  #highlight columns that are different
+    #There are Xs in front of the times in the database table.  To reconcile the two tables, the index and New.Field columns should be removed from the database table. 
+  colnames(garfielddb_table)[!(colnames(garfielddb_table) %in% colnames(garfield))]
+  garfielddb_table2<-garfielddb_table
+  garfielddb_table2$index<-NULL
+  garfielddb_table2$New.Field<-NULL
+  
+  
+ 
+ #highlight data points that are different
+  gf3<-garfielddb_table2==garfield
+  gf3  
+  
+   
+```
+
+
+## Problem 3
+
+Generate both a static plot and an interactive plot with Plotly.  The Plotly plot will only be visible in the HTML file (it will have to be downloaded from GIT).  A four week forecast is presented at the end.
+
+```{r gg2, include=TRUE, fig.height = 8.5, fig.width = 8.5,}
+iata_demand<-read.csv("iata_demand_heatmap.csv",stringsAsFactors = FALSE,header=TRUE)
+
+#Heat map colors are defined.  I take the visual aspects of data science very seriously.  This pallete comes from a Wall Street Journal visualization.  
+cols<- c("#e7f0fa", #lighter than light blue
+         "#c9e2f6", #light blue
+         "#95cbee", #blue
+         "#0099dc", #darker blue
+         "#4ab04a", #green
+         "#ffd73e", #yellow
+         "#eec73a", #mustard
+         "#e29421", #dark khaki (?)
+         "#f05336", #orange red
+         "#ce472e") #red
+
+#I'm a huge fan of ggplot
+
+library(ggplot2)
+library(scales)
+col1 = "#d8e1cf" 
+col2 = "#438484"
+library("viridis")
+library("plotly")
+
+library("forecast")
+
+  url <- "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat"
+  
+  #There is missing data in this file.  I would always address this in my professional work.  I'm reading it in to add data for the interactive heat map.
+  airports <- read.delim(url, sep = ",", header = FALSE ,
+                         col.names = c("Airport_ID", "Name", "City",
+                                       "Country","IATA_FAA", "ICAO",
+                                       "Latitude", "Longitude","Altitude",
+                                       "Timezone", "DST", "TZ", "V13", "V14")
+  ) %>% select(-V13, -V14) %>%
+    ## add a column for the customized label to be displayed on the map
+    mutate(Label = paste(paste0("<b>Airport</b>: ",
+                                Name, " (", IATA_FAA, ")"),
+                         paste0("<b>City</b>: ", City),
+                         paste0("<b>Country</b>: ", Country),
+                         sep = "<br/>"))
+  
+  airports2<-merge(x=iata_demand,y=airports,by.x="IATA",by.y="IATA_FAA",all.x=TRUE)
+  airports2$label=NULL
+  
+    airports3<-airports2
+  
+  airports3<-airports3 %>%
+    mutate(text = paste0("City: ", City, "\n","Country: ", Country))
+  
+  airports3$start<-as.Date(airports3$start)
+  
+  #First a create a ggplot object
+   gg<-ggplot(airports3, aes(x=start, y=IATA,fill=PNRs,label=Name,text=text ) )  +  
+
+    geom_tile(colour="white", 
+           # width=0.9, height=0.9) + theme_minimal() +
+           size=0.1,)+
+ theme_minimal() +
+    scale_fill_gradientn(colours=cols, limits=c(0, 20000),
+                         
+                         breaks=c(0, 3000,5000,10000,15000,20000), 
+                         na.value=rgb(246, 246, 246, max=255),
+                         labels=c("0k", "3k", "5k", "10k", "15k","20k"),
+                         guide=guide_colourbar(ticks=T, nbin=50,
+                                               barheight=.5, label=T, 
+                                               barwidth=10)) +
+    scale_x_date(breaks=date_breaks("1 months"),
+                  labels=date_format("%b %y"))+
+    theme(
+         legend.position=c(.5, -0.1),
+          #legend.position=c(.5, -.13),
+          legend.direction="horizontal",
+  legend.text=element_text(colour="grey20"),
+  #plot.margin=grid::unit(c(1.5,1.5,1.5,1.5), "cm"),)
+  plot.margin=grid::unit(c(.5,.5,1.5,.5), "cm"),)
+   
+   gg
+   
+   
+   #Plotly is used to generate an interactive plot
+     gg2<-ggplotly(gg,              text = ~n,
+                textposition = "auto",
+                hoverinfo = "text",
+)
+    
+  gg2
+
+    library(tidyverse)
+    iata_demand$start<-as.Date(iata_demand$start)
+  
+#Lapply is used with arima to generate 4 week forecasts at the airport level
+  iata_demand2<-iata_demand
+  iata_demand2_wide = iata_demand2 %>% 
+       spread(IATA, PNRs)
+  
+  lapply(iata_demand2_wide[,2:50], function(x) forecast(auto.arima(x),h=4))
+```
+
+## Problem #5
+
+I am assuming that the digit at each specific position, can be in the set (0,1,2,3,4,5,6,7,8,9).  There are positional constraints for an actual clock but these will not be addressed here.
+
+The number has the format  _ _ _ _ _ _
+
+I will refer to each _ as a position
+
+ [Position 1, Position 2, Position 3, Position 4, Position 5, Position 6]
+
+With the horizontal and vertical rotations, for the six-digit number to be the same both before and after the rotations, all individual positions will contain the same digit before and after the rotations.  For n=1 to 3, Position n will move to Position n+3, and vice versa.  For the six digit number to be the same both before and after the rotations, the resulting digit after the rotations in each position in n=1:3, must correspond to the same digit in the n+3 corresponding position, before the rotation, and vice versa.  Thus, there are symmetry implications. 
+
+Each individual digit must have a combination of a certain vertical and horizontal symmetry that results in the same number after the two rotations.  Thus, each digit must be in the set (0,1,2,5,6,8,9).  For digits in the set (0,1,2,5,8), each digit in positions n=1:3 must map to the same number in the n+3 position.  For numbers in the set (6,9), at positions n=1:3; 6 must map to 9 in the corresponding n+3 position, and 9 must map to 6.  Thus, at positions 1 to 3, there are 7 digit choices at each position.  Since, positions 1 to 3 set the assignments at positions 4 to 6, there are seven-digit options for position in n=1:3.  Thus there are 7^3 total numbers that will be the same before and after the rotations.  In total, there are a total of 10^6 different numbers.  Thus, the probability of randomly drawing a number that meets our criteria is precisely 343/10^6.
+
+
