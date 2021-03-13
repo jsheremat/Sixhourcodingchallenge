@@ -3,15 +3,20 @@ title: "Six Hour Code Challenge"
 author: "Jeff Sheremata"
 date: "3/13/2021"
 output:
-  html_document: default
-  pdf_document: default
-   rmarkdown::github_document
+  #rmarkdown::github_document
+    html_document:
+       keep_md: true
+  #html_document
+  #html_document: default
+  #pdf_document: default
+   
    
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE,warning=FALSE, message=FALSE)
 ```
+
 
 ## Problem #1
 
@@ -214,6 +219,7 @@ library("forecast")
   
   lapply(iata_demand2_wide[,2:50], function(x) forecast(auto.arima(x),h=4))
 ```
+
 
 ## Problem #5
 
